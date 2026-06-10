@@ -65,7 +65,7 @@
   .tab.active { background: var(--surface); border-color: var(--border); color: var(--text); }
 
   /* ── KANBAN ── */
-  .kanban { display: grid; grid-template-columns: repeat(5,1fr); gap: 10px; }
+  .kanban { display: grid; grid-template-columns: repeat(6,1fr); gap: 10px; }
   .col    { background: var(--surface2); border-radius: var(--radius-lg); padding: 12px; min-height: 200px; }
   .col-hd { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
   .col-name { font-size: 12px; font-weight: 600; color: var(--text); letter-spacing: 0.01em; }
@@ -85,8 +85,12 @@
   .kcard-txt  { font-size: 11px; color: var(--text2); }
   .kcard-bar  { height: 4px; border-radius: 4px; margin-top: 10px; background: var(--border); overflow: hidden; }
   .kcard-fill { height: 100%; border-radius: 4px; }
-  .kcard-val  { font-size: 12px; font-weight: 600; color: var(--text); margin-top: 2px; padding-top: 6px;
-                border-top: 1px solid var(--border); }
+  .kcard-sep  { height: 0.5px; background: var(--border); margin: 8px 0; }
+  .kcard-val  { font-size: 12px; font-weight: 600; color: var(--text); }
+  .kcard-comment { font-size: 11px; color: var(--text2); line-height: 1.45; font-style: italic;
+                   padding: 5px 8px; background: var(--surface2); margin-bottom: 8px;
+                   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+                   border-left: 2.5px solid var(--border2); }
 
   /* stage tracker */
   .stage-tracker { position: relative; display: flex; align-items: center; margin-top: 12px; padding: 0 2px; }
@@ -189,6 +193,11 @@
   .pbar-track { width: 48px; height: 4px; background: var(--surface2); border-radius: 4px; overflow: hidden; }
   .pbar-fill  { height: 100%; border-radius: 4px; }
   .pbar-num   { font-size: 12px; font-weight: 600; color: var(--text); min-width: 34px; text-align: right; }
+  .u-comment  { font-size: 11px; color: var(--text2); line-height: 1.45; font-style: italic;
+                padding: 5px 10px 5px 10px; background: var(--surface2);
+                border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+                border-left: 2.5px solid var(--border2);
+                margin: -2px 0 6px 0; }
 
   .hidden { display: none !important; }
   .empty  { text-align: center; padding: 40px; color: var(--text3); font-size: 13px; }
@@ -307,6 +316,16 @@
     <select id="f-dev" class="filter-sel" onchange="applyFilters()">
       <option value="all">Todos los desarrollos</option>
     </select>
+    <div class="filter-divider"></div>
+    <span class="filter-lbl">Tipo de venta</span>
+    <select id="f-tipo" class="filter-sel" onchange="applyFilters()">
+      <option value="all">Todos los tipos</option>
+    </select>
+    <div class="filter-divider"></div>
+    <span class="filter-lbl">Mes</span>
+    <select id="f-mes" class="filter-sel" onchange="applyFilters()">
+      <option value="all">Todos los meses</option>
+    </select>
     <button class="filter-reset" onclick="resetFilters()">Limpiar filtros</button>
   </div>
   <div class="kanban" id="kanban-board"></div>
@@ -316,8 +335,16 @@
 <div id="sec-lista" class="hidden">
   <div class="list-ctrl">
     <label for="dev-select">Desarrollo</label>
-    <select id="dev-select" class="dev-select" onchange="filterDev(this.value)">
+    <select id="dev-select" class="dev-select" onchange="filterLista()">
       <option value="all">Todos los desarrollos</option>
+    </select>
+    <label for="asesor-select" style="margin-left:8px;">Asesor</label>
+    <select id="asesor-select" class="dev-select" onchange="filterLista()">
+      <option value="all">Todos los asesores</option>
+    </select>
+    <label for="tipo-select" style="margin-left:8px;">Tipo de venta</label>
+    <select id="tipo-select" class="dev-select" onchange="filterLista()">
+      <option value="all">Todos los tipos</option>
     </select>
   </div>
   <div id="dev-list"></div>
@@ -328,9 +355,10 @@
 const API_URL = 'https://script.google.com/macros/s/AKfycbyPvSusYokXa31PEofyutYvOyQn73woWxrU2QA-KUKyQWAAfM4EbVWamCf2RP4YNdDj/exec?action=prospectos';
 
 // ─── CONFIG ────────────────────────────────────────────────────
-const ETAPAS = ['Discovery','Cita Agendada','Seguimiento','Cita Efectiva','Toma de Decisión'];
+const ETAPAS = ['Discovery','Espera de Cita','Cita Agendada','Seguimiento','Cita Efectiva','Toma de Decisión'];
 const ETAPA_CFG = {
   'Discovery':        { bg:'var(--disc-bg)', txt:'var(--disc-txt)', bar:'var(--disc-bar)' },
+  'Espera de Cita':   { bg:'var(--disc-bg)', txt:'#A05C0A',         bar:'#D4891A'         },
   'Cita Agendada':    { bg:'var(--cita-bg)', txt:'var(--cita-txt)', bar:'var(--cita-bar)' },
   'Seguimiento':      { bg:'var(--seg-bg)',  txt:'var(--seg-txt)',  bar:'var(--seg-bar)'  },
   'Cita Efectiva':    { bg:'var(--efec-bg)', txt:'var(--efec-txt)', bar:'var(--efec-bar)' },
@@ -408,6 +436,16 @@ function loadData() {
 // ─── INICIALIZAR UI CON DATOS ──────────────────────────────────
 function initUI() {
   // Poblar selectores
+  const tipos = [...new Set(raw.map(d=>d.tipo).filter(Boolean))];
+  const fTipo = document.getElementById('f-tipo');
+  fTipo.innerHTML = '<option value="all">Todos los tipos</option>';
+  tipos.forEach(t => { const o=document.createElement('option'); o.value=t; o.textContent=t; fTipo.appendChild(o); });
+
+  const meses = [...new Set(raw.map(d=>d.mes).filter(Boolean))];
+  const fMes  = document.getElementById('f-mes');
+  fMes.innerHTML = '<option value="all">Todos los meses</option>';
+  meses.forEach(m => { const o=document.createElement('option'); o.value=m; o.textContent=m; fMes.appendChild(o); });
+
   const asesores = [...new Set(raw.map(d=>d.asesor).filter(Boolean))];
   const fAsesor  = document.getElementById('f-asesor');
   fAsesor.innerHTML = '<option value="all">Todos los asesores</option>';
@@ -421,6 +459,14 @@ function initUI() {
   const sel = document.getElementById('dev-select');
   sel.innerHTML = '<option value="all">Todos los desarrollos</option>';
   devs.forEach(d => { const o=document.createElement('option'); o.value=d; o.textContent=d; sel.appendChild(o); });
+
+  const selA = document.getElementById('asesor-select');
+  selA.innerHTML = '<option value="all">Todos los asesores</option>';
+  asesores.forEach(a => { const o=document.createElement('option'); o.value=a; o.textContent=a; selA.appendChild(o); });
+
+  const selT = document.getElementById('tipo-select');
+  selT.innerHTML = '<option value="all">Todos los tipos</option>';
+  tipos.forEach(t => { const o=document.createElement('option'); o.value=t; o.textContent=t; selT.appendChild(o); });
 
   renderStats(raw);
   renderKanban(raw);
@@ -447,6 +493,7 @@ function renderKanban(data) {
           const unitLabel   = p.unidad ? 'Unidad ' + p.unidad : 'Sin unidad';
           const asesorLabel = p.asesor || 'Sin asignar';
           const valorLabel  = p.valor  ? '$' + p.valor.toLocaleString('en-US') : '—';
+          const comentario  = p.comentario || '';
           return `<div class="kcard">
             <div class="kcard-dev">${devLabel}</div>
             <div class="kcard-row">
@@ -457,6 +504,8 @@ function renderKanban(data) {
               <svg class="kcard-ico" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="5" r="3" stroke="currentColor" stroke-width="1.4"/><path d="M1.5 13c0-3.038 2.462-5.5 5.5-5.5s5.5 2.462 5.5 5.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
               <span class="kcard-txt">${asesorLabel}</span>
             </div>
+            <div class="kcard-sep"></div>
+            ${comentario ? `<div class="kcard-comment" style="border-left-color:${ec.bar}">${comentario}</div>` : ''}
             <div class="kcard-val">${valorLabel}</div>
             <div class="kcard-bar"><div class="kcard-fill" style="width:${p.avance}%;background:${ec.bar}"></div></div>
           </div>`;
@@ -516,9 +565,13 @@ function renderStats(data) {
 function applyFilters() {
   const a = document.getElementById('f-asesor').value;
   const d = document.getElementById('f-dev').value;
+  const t = document.getElementById('f-tipo').value;
+  const m = document.getElementById('f-mes').value;
   let filtered = raw;
   if (a !== 'all') filtered = filtered.filter(p => p.asesor === a);
   if (d !== 'all') filtered = filtered.filter(p => p.dev === d);
+  if (t !== 'all') filtered = filtered.filter(p => p.tipo === t);
+  if (m !== 'all') filtered = filtered.filter(p => p.mes === m);
   renderKanban(filtered);
   renderStats(filtered);
 }
@@ -526,16 +579,16 @@ function applyFilters() {
 function resetFilters() {
   document.getElementById('f-asesor').value = 'all';
   document.getElementById('f-dev').value    = 'all';
+  document.getElementById('f-tipo').value   = 'all';
+  document.getElementById('f-mes').value    = 'all';
   renderKanban(raw);
   renderStats(raw);
 }
 
 // ─── LISTA ─────────────────────────────────────────────────────
-function renderDevList(filter) {
-  const filtered = filter==='all' ? raw : raw.filter(d=>d.dev===filter);
-  const devNames = filter==='all' ? [...new Set(filtered.map(d=>d.dev||'Sin desarrollo'))] : [filter];
+function renderDevList(filtered, devNames) {
   const el = document.getElementById('dev-list');
-  if (!filtered.length) { el.innerHTML='<div class="empty">Sin datos para este desarrollo</div>'; return; }
+  if (!filtered.length) { el.innerHTML='<div class="empty">Sin datos para esta selección</div>'; return; }
 
   el.innerHTML = devNames.map(devName => {
     const items = filtered.filter(d=>(d.dev||'Sin desarrollo')===devName);
@@ -548,6 +601,7 @@ function renderDevList(filter) {
       const ec        = ETAPA_CFG[p.etapa] || ETAPA_CFG['Discovery'];
       const ac        = asesorCfg(p.asesor);
       const unitLabel = p.unidad ? 'Unidad ' + p.unidad : 'Prospecto ' + (i+1);
+      const comentario = p.comentario || '';
       return `<div class="urow">
         <div class="u-asesor">
           <div class="a-dot" style="background:${ac.bg};color:${ac.txt}">${initials(p.asesor)}</div>
@@ -563,7 +617,8 @@ function renderDevList(filter) {
             <span class="pbar-num">${p.avance}%</span>
           </div>
         </div>
-      </div>`;
+      </div>
+      ${comentario ? `<div class="u-comment" style="border-left-color:${ec.bar}">${comentario}</div>` : ''}`;
     }).join('');
 
     return `<div class="dev-block">
@@ -589,14 +644,30 @@ function renderDevList(filter) {
   }).join('');
 }
 
-function filterDev(val) { renderDevList(val); }
+function filterLista() {
+  const dev    = document.getElementById('dev-select').value;
+  const asesor = document.getElementById('asesor-select').value;
+  const tipo   = document.getElementById('tipo-select').value;
+  let filtered = raw;
+  if (dev    !== 'all') filtered = filtered.filter(d => d.dev    === dev);
+  if (asesor !== 'all') filtered = filtered.filter(d => d.asesor === asesor);
+  if (tipo   !== 'all') filtered = filtered.filter(d => d.tipo   === tipo);
+
+  const devNames = dev !== 'all'
+    ? [dev]
+    : [...new Set(filtered.map(d => d.dev || 'Sin desarrollo'))];
+
+  renderDevList(filtered, devNames);
+}
+
+function filterDev(val) { filterLista(); }
 
 function showSection(id, tab) {
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   tab.classList.add('active');
   document.getElementById('sec-kanban').classList.toggle('hidden', id!=='kanban');
   document.getElementById('sec-lista').classList.toggle('hidden', id!=='lista');
-  if (id==='lista') renderDevList('all');
+  if (id==='lista') filterLista();
 }
 
 // ─── ARRANQUE ──────────────────────────────────────────────────
